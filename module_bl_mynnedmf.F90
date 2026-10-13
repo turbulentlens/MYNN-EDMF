@@ -4458,7 +4458,7 @@ END IF
     k=kts
     !rho-weighted (drag in b-vector):
     a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
-    b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1) + rhosfc*ust**2/wspd)*rhoinv(k)    &
+    b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1) + rhosfc*ust*ustovwsp)*rhoinv(k)    &
         &  /vl1D(k)                          &
         &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
         &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff                &
