@@ -559,7 +559,7 @@ integer, intent(in), optional :: sf_urban_physics ! BEP Changes
                b_q1D(k)=0.
                a_e1D(k)=0.
                b_e1D(k)=0.
-               dlg1D(k)=0
+               dlg1D(k)=0.
                dl_u1D(k)=0.
                vl1D(k)=1.
                sf1D(k)=1.
@@ -659,7 +659,8 @@ integer, intent(in), optional :: sf_urban_physics ! BEP Changes
             a_q1d            = a_q1d        , a_e1D       = a_e1D                                      , &
             b_u1D            = b_u1d        , b_v1D       = b_v1d         , b_t1D       = b_t1d        , &
             b_q1D            = b_q1d        , b_e1d       = b_e1d                                      , &
-            sf1D             = sf1d         , vl1D        = vl1d          , dl_u1D      = dl_u1D       , &   ! End Changes
+            sf1D             = sf1d         , vl1D        = vl1d          , dl_u1D      = dl_u1D       , &   
+            dlg1D            = dlg1D        ,                                                            & ! End Changes
 ! ! ! endif
             bl_mynn_tkeadvect  = bl_mynn_tkeadvect    , &
             tke_budget         = tke_budget           , &
