@@ -3399,12 +3399,12 @@ else !implicit
       b(k)=1. + dtz(k)*(kqdz(k)*sf1D(k)+kqdz(k+1)*sf1D(k+1))*rhoinv(k)   &
           &     /vl1D(k)                                         & ! BEP Changes
           &   + 0.5*dtz(k)*rhoinv(k)*(s_aw1(k)-s_aw1(k+1))*onoff &
-          &   + bp(k)*delt - a_e1D(k)*delt                           ! BEP Changes
+          &   + bp(k)*delt - a_e1D(k)*delt                         ! BEP Changes
       c(k)=   - dtz(k)*kqdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)     &
           &   - 0.5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff
       d(k)=rp(k)*delt + qke(k)                                   &
           &   + dtz(k)*rhoinv(k)*(s_awqke1(k)                    &
-          &   - s_awqke1(k+1))*onoff + b_e1D(k)*delt                 ! BEP Changes
+          &   - s_awqke1(k+1))*onoff + two*b_e1D(k)*delt           ! BEP Changes
    ENDDO
 endif
 
