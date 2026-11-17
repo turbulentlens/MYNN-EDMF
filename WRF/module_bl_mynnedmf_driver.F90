@@ -547,6 +547,7 @@ integer, intent(in), optional :: sf_urban_physics ! BEP Changes
                vl1D(k)=vl_bep(i,k,j)
                sf1D(k)=sf_bep(i,k,j)
             enddo
+            ust1  = ( ( a_u1D(kts)**2 + a_v1D(kts)**2 )**.5 *dz1(kts)*( u1(kts)**2 + v1(kts)**2 )**.5 )**.5 !! Pass urban momentum flux
           else
             do k=kts,kte
                a_t1D(k)=0.
