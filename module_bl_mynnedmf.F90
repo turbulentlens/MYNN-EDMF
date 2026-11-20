@@ -959,15 +959,6 @@ CONTAINS
     flt =hfx/(rho1(kts)*cpm )-xlvcp*flqc/ex1(kts)  !! Temperature flux
     fltv=flt + flqv*p608*th_sfc      !! Virtual temperature flux
 
-    ! BEP Changes - Recompute for urban sfc fluxes
-    if (frc_urb .gt. zero) then
-      flqv =b_q1D(kts) * dz1(kts)
-      flq  =flqv+flqc                   !! LATENT
-      flt  =b_t1D(kts) * dz1(kts) - xlvcp*flqc/ex1(kts)  !! Temperature flux
-      fltv =flt + flqv*p608*th_sfc      !! Virtual temperature flux
-      ! ust  =( a_u1D(kts)*dz1(kts)*( u1(kts)**2 + v1(kts)**2 )**0.5 )**0.5 !! Momentum flux
-    endif
-
     ! Update 1/L using updated sfc heat flux and friction velocity
     rmol= -karman*gtr*fltv/max(ust**3,1.0e-6_kind_phys)
     rmolh=-karman*gtr*flt /max(ust**3,1.0e-6_kind_phys)
@@ -1219,7 +1210,7 @@ CONTAINS
             &bl_mynn_mixnumcon,                          & 
             &a_u1D,a_v1D,a_t1D,a_q1D,                    & !urban
             &b_u1D,b_v1D,b_t1D,b_q1D,                    & !urban
-            &sf1D,vl1D                                   ) !urban
+            &sf1D,vl1D,frc_urb                           ) !urban
 
     if ( mix_chem ) then
           call mynn_mix_chem(kts,kte,i,                  &
@@ -3380,14 +3371,11 @@ if (bl_mynn_edmf > 1) then
     dncont(kte)=zero
 
     k=kts
-    if (b_e1D(k) .ne. zero) then
-       b_e1D(k) = two*b_e1D(k)*delt - rp(k)*delt ! BEP
-    endif
     a(1)=zero
     b(1)=one + dtz(k)*kqdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k) + bp(k)*delt ! BEP Changes
     c(1)=    - dtz(k)*kqdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
     d(1)=max(qkemin, qke(k)) + rp(k)*delt                        &
-        &    - dtz(k)*(upcont(k+1)+dncont(k+1)) + b_e1D(k) ! BEP Changes
+        &    - dtz(k)*(upcont(k+1)+dncont(k+1)) + two*b_e1D(k)*delt ! BEP Changes
 
     DO k=kts+1,kte-1
        a(k)=   - dtz(k)*kqdz(k)*rhoinv(k) * sf1D(k)/vl1D(k)                           ! BEP Changes
@@ -4193,7 +4181,7 @@ END IF
        &bl_mynn_mixnumcon,                    &
        &a_u1D,a_v1D,a_t1D,a_q1D,              & !urban
        &b_u1D,b_v1D,b_t1D,b_q1D,              & !urban
-       &sf1D,vl1D                             ) !urban
+       &sf1D,vl1D,frc_urb                     ) !urban
 
 !-------------------------------------------------------------------
     integer, intent(in) :: kts,kte,i
@@ -4240,6 +4228,7 @@ END IF
     integer :: kproblem
 
 !    real(kind_phys), intent(in) :: gradu_top,gradv_top,gradth_top,gradqv_top
+   real(kind_phys):: frc_urb
    real(kind_phys), dimension(kts:kte) ::                                  & ! BEP Changes
                &a_u1D,a_v1D,a_t1D,a_q1D,b_u1D,b_v1D,b_t1D,b_q1D,           & 
                &sf1D,vl1D
@@ -4353,11 +4342,20 @@ END IF
     ! upcont(1) and dncont(1) are not used so they don't need to be set
 
     k=kts
-       a(1)=zero
-       b(1)=one + dtz(k)*(kmdz(k+1)*sf1D(k+1)+rhosfc*ust*ustovwsp)*rhoinv(k)/vl1D(k)
-       c(1)=    - dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-       d(1)=u(k)+ dtz(k)*uoce*ust**2/wspd*rho(k)                      &
-            - dtz(k)*(upcont(k+1)+dncont(k+1))
+       if (frc_urb .gt. zero) then
+          a(1)=zero
+          b(1)=one + dtz(k)*(kmdz(k+1)*sf1D(k+1))*rhoinv(k)/vl1D(k)      &
+                &  - a_u1D(k)*delt 
+          c(1)=    - dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+          d(1)=u(k) - dtz(k)*(upcont(k+1)+dncont(k+1))
+       else
+          a(1)=zero
+          b(1)=one + dtz(k)*(kmdz(k+1)*sf1D(k+1)+rhosfc*ust*ustovwsp)*rhoinv(k)/vl1D(k)
+          c(1)=    - dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+          d(1)=u(k)+ dtz(k)*uoce*ust**2/wspd*rho(k)                      &
+                - dtz(k)*(upcont(k+1)+dncont(k+1))
+       endif
+
     DO k=kts+1,kte-1
        a(k)=   - dtz(k)*kmdz(k)*sf1D(k)*rhoinv(k)/vl1D(k) 
        b(k)=one+ dtz(k)*(kmdz(k)*sf1D(k)+kmdz(k+1)*sf1D(k+1))*rhoinv(k)/vl1D(k) &
@@ -4371,18 +4369,33 @@ END IF
     
     k=kts
     !rho-weighted (drag in b-vector):
-    a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
-    b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1)+rhosfc*ust*ustovwsp)*rhoinv(k)      &
-          & /vl1D(k)                                              &
-          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                &
-          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
-    c(k)=  -dtz(k)*kmdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)           &
-          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                &
-          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
-    d(k)=u(k)  + dtz(k)*uoce*ust**2/wspd                           &
-          & - dtz(k)*rhoinv(k)*s_awu1(k+1)*onoff                  &
-          & + dtz(k)*rhoinv(k)*sd_awu1(k+1)*onoff                 &
-          & + sub_u(k)*delt + det_u(k)*delt
+    if (frc_urb .gt. zero) then
+       a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+       b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1))*rhoinv(k)      &
+             & /vl1D(k)                                              &
+             & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                &
+             & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff               &
+             & - a_u1D(k)*delt
+       c(k)=  -dtz(k)*kmdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)           &
+             & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                &
+             & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
+       d(k)=u(k) - dtz(k)*rhoinv(k)*s_awu1(k+1)*onoff                  &
+             & + dtz(k)*rhoinv(k)*sd_awu1(k+1)*onoff                 &
+             & + sub_u(k)*delt + det_u(k)*delt
+    else
+       a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+       b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1)+rhosfc*ust*ustovwsp)*rhoinv(k)      &
+             & /vl1D(k)                                              &
+             & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                &
+             & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
+       c(k)=  -dtz(k)*kmdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)           &
+             & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                &
+             & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
+       d(k)=u(k)  + dtz(k)*uoce*ust**2/wspd                           &
+             & - dtz(k)*rhoinv(k)*s_awu1(k+1)*onoff                  &
+             & + dtz(k)*rhoinv(k)*sd_awu1(k+1)*onoff                 &
+             & + sub_u(k)*delt + det_u(k)*delt
+    endif
 
     do k=kts+1,kte-1
        a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)            &
@@ -4446,11 +4459,19 @@ END IF
     ! upcont(1) and dncont(1) are not used so they don't need to be set
 
     k=kts
-    a(1)=zero
-    b(1)=one + dtz(k)*(kmdz(k+1)*sf1D(k+1)+rhosfc*ust*ustovwsp)*rhoinv(k)/vl1D(k)
-    c(1)=    - dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-    d(1)=v(k)+ dtz(k)*voce*ust**2/wspd*rho(k)                      &
-             - dtz(k)*(upcont(k+1)+dncont(k+1))
+    if (frc_urb .gt. zero) then
+       a(1)=zero
+       b(1)=one + dtz(k)*(kmdz(k+1)*sf1D(k+1))*rhoinv(k)/vl1D(k)     &
+            &   - a_v1D(k)*delt
+       c(1)=    - dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       d(1)=v(k) - dtz(k)*(upcont(k+1)+dncont(k+1))
+    else
+       a(1)=zero
+       b(1)=one + dtz(k)*(kmdz(k+1)*sf1D(k+1)+rhosfc*ust*ustovwsp)*rhoinv(k)/vl1D(k)
+       c(1)=    - dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       d(1)=v(k)+ dtz(k)*voce*ust**2/wspd*rho(k)                      &
+                - dtz(k)*(upcont(k+1)+dncont(k+1))
+    endif
 
     DO k=kts+1,kte-1
        a(k)=   - dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
@@ -4464,19 +4485,35 @@ END IF
  else !implicit
 
     k=kts
-    !rho-weighted (drag in b-vector):
-    a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
-    b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1) + rhosfc*ust*ustovwsp)*rhoinv(k)    &
-       &  /vl1D(k)                          &
-       &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
-       &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
-    c(k)=  -dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)          &
-       &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
-       &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
-    d(k)=v(k)  + dtz(k)*voce*ust**2/wspd                          &
-       &  - dtz(k)*rhoinv(k)*s_awv1(k+1)*onoff                   &
-       &  + dtz(k)*rhoinv(k)*sd_awv1(k+1)*onoff                  &
-       &  + sub_v(k)*delt + det_v(k)*delt
+    if (frc_urb .gt. zero) then
+       !rho-weighted (drag in b-vector):
+       a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+       b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1))    &
+          &  /vl1D(k)                          &
+          &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
+          &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff                &
+          &  - a_v1D(k)*delt
+       c(k)=  -dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)          &
+          &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
+          &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
+       d(k)=v(k) - dtz(k)*rhoinv(k)*s_awv1(k+1)*onoff                   &
+          &  + dtz(k)*rhoinv(k)*sd_awv1(k+1)*onoff                  &
+          &  + sub_v(k)*delt + det_v(k)*delt
+    else
+       !rho-weighted (drag in b-vector):
+       a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+       b(k)=one+dtz(k)*(kmdz(k+1)*sf1D(k+1) + rhosfc*ust*ustovwsp)*rhoinv(k)    &
+          &  /vl1D(k)                          &
+          &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
+          &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
+       c(k)=  -dtz(k)*kmdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)          &
+          &  - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)*onoff                 &
+          &  - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)*onoff
+       d(k)=v(k)  + dtz(k)*voce*ust**2/wspd                          &
+          &  - dtz(k)*rhoinv(k)*s_awv1(k+1)*onoff                   &
+          &  + dtz(k)*rhoinv(k)*sd_awv1(k+1)*onoff                  &
+          &  + sub_v(k)*delt + det_v(k)*delt
+    endif
 
     do k=kts+1,kte-1
        a(k)=  -dtz(k)*kmdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)           &
@@ -4537,12 +4574,22 @@ END IF
     ! upcont(1) and dncont(1) are not used so they don't need to be set
 
     k=kts
-    a(1)=zero
-    b(1)=one + dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-    c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-    d(1)=thl(k)+dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt              &
-         - dtz(k)*(upcont(k+1)+dncont(k+1))                            &
-         + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt
+    if (frc_urb .gt. zero) then
+       a(1)=zero
+       b(1)=one + dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       d(1)=thl(k) + tcd(k)*delt              &
+             - dtz(k)*(upcont(k+1)+dncont(k+1))                            &
+             + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt       &
+             + b_t1D(k)*delt
+    else
+       a(1)=zero
+       b(1)=one + dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       d(1)=thl(k)+dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt              &
+             - dtz(k)*(upcont(k+1)+dncont(k+1))                            &
+             + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt       
+    endif
 
     DO k=kts+1,kte-1
        a(k)=   - dtz(k)*khdz(k)*sf1D(k)*rhoinv(k)/vl1D(k)
@@ -4557,19 +4604,36 @@ END IF
  else !implicit
     
     k=kts
-    !rho-weighted: rhosfc*x*rhoinv(k)
-    a(k)=  -dtz(k)*khdz(k)*sf1D(k)*rhoinv(k)/vl1D(k)
-    b(k)=1.+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)/vl1D(k) & ! BEP Changes
-       &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
-       &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)                 
-    c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)     &
-       &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
-       &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
-    d(k)=thl(k) + dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt  &
-!    d(k)=thl_tot1(k) + dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt  &
-       &   - dtz(k)*rhoinv(k)*s_awthl1(k+1)                  &
-       &   + dtz(k)*rhoinv(k)*sd_awthl1(k+1)                 &
-       &   + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt
+    if (frc_urb .gt. zero) then
+       !rho-weighted: rhosfc*x*rhoinv(k)
+       a(k)=  -dtz(k)*khdz(k)*sf1D(k)*rhoinv(k)/vl1D(k)
+       b(k)=1.+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)/vl1D(k) & ! BEP Changes
+          &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
+          &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)                 
+       c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)     &
+          &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
+          &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+       d(k)=thl(k) + dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt  &
+    !    d(k)=thl_tot1(k) + tcd(k)*delt  &
+          &   - dtz(k)*rhoinv(k)*s_awthl1(k+1)                  &
+          &   + dtz(k)*rhoinv(k)*sd_awthl1(k+1)                 &
+          &   + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt   &
+          &   + b_t1D(k)*delt
+    else
+       !rho-weighted: rhosfc*x*rhoinv(k)
+       a(k)=  -dtz(k)*khdz(k)*sf1D(k)*rhoinv(k)/vl1D(k)
+       b(k)=1.+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)/vl1D(k) & ! BEP Changes
+          &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
+          &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)                 
+       c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)     &
+          &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
+          &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+       d(k)=thl(k) + dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt  &
+    !    d(k)=thl_tot1(k) + dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt  &
+          &   - dtz(k)*rhoinv(k)*s_awthl1(k+1)                  &
+          &   + dtz(k)*rhoinv(k)*sd_awthl1(k+1)                 &
+          &   + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt
+    endif
 
     do k=kts+1,kte-1
        a(k)= -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)       &
@@ -4639,12 +4703,22 @@ IF (bl_mynn_mixqt > 0) THEN
     ! upcont(1) and dncont(1) are not used so they don't need to be set
 
     k=kts
-    a(1)=zero
-    b(1)=one + dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-    c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-    d(1)=sqw(k)+dtz(k)*rhosfc*flq*rhoinv(k) + qcd(k)*delt              &
-         - dtz(k)*(upcont(k+1)+dncont(k+1))                            &
-         + sub_sqv(k)*delt + det_sqv(k)*delt
+    if (frc_urb .gt. zero) then
+       a(1)=zero
+       b(1)=one + dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       d(1)=sqw(k) + qcd(k)*delt              &
+             - dtz(k)*(upcont(k+1)+dncont(k+1))                            &
+             + sub_sqv(k)*delt + det_sqv(k)*delt                           &
+             + b_q1D(k)*delt
+    else
+       a(1)=zero
+       b(1)=one + dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+       d(1)=sqw(k)+dtz(k)*rhosfc*flq*rhoinv(k) + qcd(k)*delt              &
+             - dtz(k)*(upcont(k+1)+dncont(k+1))                            &
+             + sub_sqv(k)*delt + det_sqv(k)*delt
+    endif
 
     DO k=kts+1,kte-1
        a(k)=   - dtz(k)*khdz(k)*sf1D(k)*rhoinv(k)/vl1D(k)
@@ -4658,17 +4732,32 @@ IF (bl_mynn_mixqt > 0) THEN
  else !implicit
 
     k=kts
-    !rho-weighted:
-    a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
-    b(k)=one+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)/vl1D(k)         &
-       & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                 &
-       & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
-    c(k)=  -dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)                    &
-       & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                 &
-       & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
-    d(k)=sqw(k)  + dtz(k)*rhosfc*flq*rhoinv(k) + qcd(k)*delt &
-       &  - dtz(k)*rhoinv(k)*s_awqt1(k+1)                 &
-       &  + dtz(k)*rhoinv(k)*sd_awqt1(k+1)
+    if (frc_urb .gt. zero) then
+       !rho-weighted:
+       a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+       b(k)=one+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)/vl1D(k)         &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                 &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+       c(k)=  -dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)                    &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                 &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+       d(k)=sqw(k) + qcd(k)*delt &
+          &  - dtz(k)*rhoinv(k)*s_awqt1(k+1)                 &
+          &  + dtz(k)*rhoinv(k)*sd_awqt1(k+1)                &
+          &  + b_q1D(k)*delt
+    else
+       !rho-weighted:
+       a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+       b(k)=one+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)/vl1D(k)         &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                 &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+       c(k)=  -dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)                    &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                 &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+       d(k)=sqw(k)  + dtz(k)*rhosfc*flq*rhoinv(k) + qcd(k)*delt &
+          &  - dtz(k)*rhoinv(k)*s_awqt1(k+1)                 &
+          &  + dtz(k)*rhoinv(k)*sd_awqt1(k+1)
+    endif
 
     do k=kts+1,kte-1
        a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)   &
@@ -4828,12 +4917,22 @@ IF (bl_mynn_mixqt == 0) THEN
       ! upcont(1) and dncont(1) are not used so they don't need to be set
 
       k=kts
-      a(1)=zero
-      b(1)=one + dtz(k)*khdz(k+1)*sf1d(k+1)*rhoinv(k)/vl1D(k)
-      c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
-      d(1)=sqv(k)+dtz(k)*rhosfc*qvflux*rhoinv(k) + qcd(k)*delt     &
-          &    - dtz(k)*(upcont(k+1)+dncont(k+1))			          &    
-          &    + sub_sqv(k)*delt + det_sqv(k)*delt
+      if (frc_urb .gt. zero) then
+          a(1)=zero
+          b(1)=one + dtz(k)*khdz(k+1)*sf1d(k+1)*rhoinv(k)/vl1D(k)
+          c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+          d(1)=sqv(k)+ qcd(k)*delt     &
+             &    - dtz(k)*(upcont(k+1)+dncont(k+1))			          &    
+             &    + sub_sqv(k)*delt + det_sqv(k)*delt                 &
+             &    + b_q1D(k)*delt
+      else
+          a(1)=zero
+          b(1)=one + dtz(k)*khdz(k+1)*sf1d(k+1)*rhoinv(k)/vl1D(k)
+          c(1)=    - dtz(k)*khdz(k+1)*sf1D(k+1)*rhoinv(k)/vl1D(k)
+          d(1)=sqv(k)+dtz(k)*rhosfc*qvflux*rhoinv(k) + qcd(k)*delt     &
+             &    - dtz(k)*(upcont(k+1)+dncont(k+1))			          &    
+             &    + sub_sqv(k)*delt + det_sqv(k)*delt
+      endif
 
       DO k=kts+1,kte-1
          a(k)=   - dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
@@ -4847,19 +4946,36 @@ IF (bl_mynn_mixqt == 0) THEN
    else !implicit 
 
       k=kts
-      !rho-weighted:
-      a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
-      b(k)=one+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)        &
-      & / vl1D(k)                                          &
-      & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                   &
-      & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
-      c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k) &
-      & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                   &
-      & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
-      d(k)=sqv(k)  + dtz(k)*rhosfc*qvflux*rhoinv(k) + qcd(k)*delt &
-      & - dtz(k)*rhoinv(k)*s_awqv1(k+1)                    &
-      & + dtz(k)*rhoinv(k)*sd_awqv1(k+1)                   &
-      & + sub_sqv(k)*delt + det_sqv(k)*delt
+      if (frc_urb .gt. zero) then
+          !rho-weighted:
+          a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+          b(k)=one+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)        &
+          & / vl1D(k)                                          &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                   &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+          c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k) &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                   &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+          d(k)=sqv(k) + qcd(k)*delt        &
+          & - dtz(k)*rhoinv(k)*s_awqv1(k+1)                    &
+          & + dtz(k)*rhoinv(k)*sd_awqv1(k+1)                   &
+          & + sub_sqv(k)*delt + det_sqv(k)*delt                &
+          & + b_q1D(k)*delt
+      else
+          !rho-weighted:
+          a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)
+          b(k)=one+dtz(k)*(khdz(k+1)*sf1D(k+1)+khdz(k)*sf1D(k))*rhoinv(k)        &
+          & / vl1D(k)                                          &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                   &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+          c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k) &
+          & - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                   &
+          & - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
+          d(k)=sqv(k)  + dtz(k)*rhosfc*qvflux*rhoinv(k) + qcd(k)*delt &
+          & - dtz(k)*rhoinv(k)*s_awqv1(k+1)                    &
+          & + dtz(k)*rhoinv(k)*sd_awqv1(k+1)                   &
+          & + sub_sqv(k)*delt + det_sqv(k)*delt
+      endif
 
       do k=kts+1,kte-1
          a(k)=  -dtz(k)*khdz(k)*rhoinv(k)*sf1D(k)/vl1D(k)  &
