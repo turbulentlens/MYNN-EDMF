@@ -4613,8 +4613,8 @@ END IF
        c(k)=  -dtz(k)*khdz(k+1)*rhoinv(k)*sf1D(k+1)/vl1D(k)     &
           &   - p5*dtz(k)*rhoinv(k)*s_aw1(k+1)                  &
           &   - p5*dtz(k)*rhoinv(k)*sd_aw1(k+1)
-       d(k)=thl(k) + dtz(k)*rhosfc*flt*rhoinv(k) + tcd(k)*delt  &
-    !    d(k)=thl_tot1(k) + tcd(k)*delt  &
+       d(k)=thl(k) + tcd(k)*delt                                &
+    !    d(k)=thl_tot1(k) + tcd(k)*delt                         &
           &   - dtz(k)*rhoinv(k)*s_awthl1(k+1)                  &
           &   + dtz(k)*rhoinv(k)*sd_awthl1(k+1)                 &
           &   + diss_heat(k)*delt + sub_thl(k)*delt + det_thl(k)*delt   &
