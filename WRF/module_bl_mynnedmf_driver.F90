@@ -531,14 +531,14 @@ integer, intent(in), optional :: sf_urban_physics ! BEP Changes
             frc_urb=frc_urb2d(i,j)
             !Update urban arrays with incoming information
             do k=kts,kte
-               a_t1D(k)=a_t_bep(i,k,j)
-               b_t1D(k)=b_t_bep(i,k,j)
+               a_q1D(k)=a_q_bep(i,k,j)
+               b_q1D(k)=b_q_bep(i,k,j)
+               a_t1D(k)=a_t_bep(i,k,j) * (1 + 0.61*a_q1D(k)) ! JC - Conv. to virt. pot. temp.
+               b_t1D(k)=b_t_bep(i,k,j) * (1 + 0.61*b_q1D(k))
                a_u1D(k)=a_u_bep(i,k,j)
                b_u1D(k)=b_u_bep(i,k,j)
                a_v1D(k)=a_v_bep(i,k,j)
                b_v1D(k)=b_v_bep(i,k,j)
-               a_q1D(k)=a_q_bep(i,k,j)
-               b_q1D(k)=b_q_bep(i,k,j)
                a_e1D(k)=a_e_bep(i,k,j)
                b_e1D(k)=b_e_bep(i,k,j)
                dlg1D(k)= dlg_bep(i,k,j) 
